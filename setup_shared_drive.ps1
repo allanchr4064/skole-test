@@ -8,9 +8,28 @@ $groupName = "SharedDriveUsers"
 New-ADGroup -Name $groupName -GroupScope Global -Path "CN=Users,DC=allan,DC=ninja"
 Write-Host "Sikkerhedsgruppe $groupName oprettet."
 
-# Tilføj brugere til gruppen (eksempel med 'main' bruger)
-Add-ADGroupMember -Identity $groupName -Members "main"
-Write-Host "Brugeren 'main' er tilføjet til $groupName."
+# Spørg om brugeren, der skal tilføjes til gruppen
+$userToAdd = Read-Host "Indtast brugernavnet på den bruger, der skal tilføjes til $groupName"
+
+# Tjek om brugeren findes i AD
+$userExists = Get-ADUser -Filter {SamAccountName -eq $userToAdd}
+
+if ($userExists) {
+    # Hvis brugeren findes, tilføj til gruppen
+    Add-ADGroupMember -Identity $groupName -Members $userToAdd
+    Write-Host "Brugeren '$userToAdd' er tilføjet til $groupName."
+} else {
+    # Hvis brugeren ikke findes, opret en ny bruger
+    Write-Host "Brugeren '$userToAdd' findes ikke i Active Directory. Opretter ny bruger..."
+
+    # Opret en ny bruger (her kan du tilpasse de nødvendige parametre)
+    $password = Read-Host "Indtast et initialt password for brugeren" -AsSecureString
+    New-ADUser -SamAccountName $userToAdd -UserPrincipalName "$userToAdd@allan.ninja" -Name $userToAdd -GivenName $userToAdd -Surname "Efternavn" -Path "CN=Users,DC=allan,DC=ninja" -AccountPassword $password -Enabled $true
+    
+    # Tilføj den nye bruger til gruppen
+    Add-ADGroupMember -Identity $groupName -Members $userToAdd
+    Write-Host "Brugeren '$userToAdd' er oprettet og tilføjet til $groupName."
+}
 
 # Del mappe og konfigurer tilladelser
 $folderPath = "C:\Shared"

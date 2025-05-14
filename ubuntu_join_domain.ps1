@@ -1,14 +1,19 @@
-# Ubuntu til domænet
+# Spørg brugeren om domæneadministratorens brugernavn og adgangskode
+$domainAdminUser = Read-Host "Indtast domæneadministratorens brugernavn"
+$domainAdminPassword = Read-Host "Indtast domæneadministratorens adgangskode" -AsSecureString
+$domainName = Read-Host "Indtast domænenavnet"
 
-$domainAdminUser = "main"
-$domainAdminPassword = "Oldboys1234!"
-$domainName = "allan.ninja"
+# Spørg brugeren om Ubuntu-serverens IP-adresse
+$ubuntuIp = Read-Host "Indtast Ubuntu-serverens IP-adresse"
 
-# Ubuntu tilslutning til domænet
-echo $domainAdminPassword | sudo realm join --user=$domainAdminUser $domainName
+# Konverter adgangskoden fra SecureString til klartekst
+$domainAdminPasswordPlain = [System.Net.NetworkCredential]::new("", $domainAdminPassword).Password
+
+# Tilslut Ubuntu-serveren til domænet
+# Brug Write-Output i stedet for echo og undgå brug af alias
+Write-Output $domainAdminPasswordPlain | sudo realm join --user=$domainAdminUser $domainName
 Write-Host "Ubuntu-serveren er nu tilsluttet domænet $domainName."
 
-# Opret DNS-record for Ubuntu
-$ubuntuIp = "192.168.1.20"
+# Opret DNS-record for Ubuntu-serveren
 Add-DnsServerResourceRecordA -Name "ubu" -ZoneName $domainName -IPv4Address $ubuntuIp
 Write-Host "DNS-record for Ubuntu-server oprettet med IP-adresse $ubuntuIp."
