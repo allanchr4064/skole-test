@@ -43,11 +43,14 @@ New-SmbShare -Name $shareName -Path $sharePath -FullAccess "Domain Admins"
 # Opret brugere
 foreach ($user in $users) {
     $upn = "$($user.Name)@$domainName"
+    $password = ConvertTo-SecureString $user.Password -AsPlainText -Force
 
+    # Opret brugeren
     New-ADUser -Name $user.Name -SamAccountName $user.Name -UserPrincipalName $upn `
                -Path "CN=Users,DC=$($domainName -replace '\.',',DC=')" `
-               -AccountPassword $user.Password -Enabled $true
+               -AccountPassword $password -Enabled $true
 
+    # Gør brugeren til admin, hvis det er specificeret
     if ($user.IsAdmin) {
         Add-ADGroupMember -Identity "Domain Admins" -Members $user.Name
     }
