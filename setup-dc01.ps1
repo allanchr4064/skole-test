@@ -42,20 +42,15 @@ New-SmbShare -Name $shareName -Path $sharePath -FullAccess "Domain Admins"
 
 # Opret brugere
 foreach ($user in $users) {
-    # Brug en beskrivende variabel for adgangskoden
-    $userPassword = ConvertTo-SecureString $user.Password -AsPlainText -Force
     $upn = "$($user.Name)@$domainName"
 
-    # Opret bruger i Active Directory
     New-ADUser -Name $user.Name -SamAccountName $user.Name -UserPrincipalName $upn `
                -Path "CN=Users,DC=$($domainName -replace '\.',',DC=')" `
-               -AccountPassword $userPassword -Enabled $true
+               -AccountPassword $user.Password -Enabled $true
 
-    # Hvis brugeren skal tilføjes til Domain Admins, så gør det
     if ($user.IsAdmin) {
         Add-ADGroupMember -Identity "Domain Admins" -Members $user.Name
     }
 }
 
-# Genstart for at afslutte opsætningen af domænet
-Restart-Computer -Force
+Write-Host "✅ Setup fuldført. Genstart manuelt for at færdiggøre domæneinstallationen."
