@@ -15,16 +15,16 @@ param(
 $prefixLength = ($subnetMask -split '\.').Where({$_ -eq "255"}).Count * 8
 $interface = Get-NetAdapter | Where-Object { $_.Status -eq "Up" } | Select-Object -First 1
 
-# Sæt en statisk IP, hvis ikke allerede sat
-$existingIP = Get-NetIPAddress -InterfaceAlias $interface.Name -ErrorAction SilentlyContinue
-if ($null -eq $existingIP) {
+# Sæt statisk IP hvis nødvendigt
+$currentIP = (Get-NetIPAddress -InterfaceAlias $interface.Name -AddressFamily IPv4 -PrefixOrigin Manual -ErrorAction SilentlyContinue).IPAddress
+if ($currentIP -ne $ipAddress) {
+    Write-Host "Ændrer IP-konfiguration..."
+    Remove-NetIPAddress -InterfaceAlias $interface.Name -Confirm:$false -ErrorAction SilentlyContinue
     New-NetIPAddress -InterfaceAlias $interface.Name -IPAddress $ipAddress -PrefixLength $prefixLength -DefaultGateway $gateway
+    Set-DnsClientServerAddress -InterfaceAlias $interface.Name -ServerAddresses $ipAddress
 } else {
     Write-Host "IP-adresse $ipAddress er allerede konfigureret."
 }
-
-# Indstil DNS-serveradresse
-Set-DnsClientServerAddress -InterfaceAlias $interface.Name -ServerAddresses $ipAddress
 
 # Installer DNS og AD DS
 Install-WindowsFeature DNS -IncludeManagementTools
@@ -37,8 +37,7 @@ if ($zoneName) {
     }
 
     foreach ($record in $dnsRecords) {
-        $existingRecord = Get-DnsServerResourceRecord -ZoneName $zoneName | Where-Object { $_.HostName -eq $record.Name }
-        if ($null -eq $existingRecord) {
+        if (-not (Get-DnsServerResourceRecord -ZoneName $zoneName -Name $record.Name -ErrorAction SilentlyContinue)) {
             Add-DnsServerResourceRecordA -Name $record.Name -ZoneName $zoneName -IPv4Address $record.IP
         } else {
             Write-Host "DNS-posten $($record.Name) eksisterer allerede."
@@ -46,36 +45,20 @@ if ($zoneName) {
     }
 }
 
-# Skift fra Workgroup til Domain og promover til Domain Controller
-$computerSystem = Get-WmiObject -Class Win32_ComputerSystem
-if ($computerSystem.Domain -ne $domainName) {
-    Write-Host "Maskinen er ikke medlem af domænet $domainName. Tilføjer nu til domænet..."
-    Add-Computer -DomainName $domainName -Credential (New-Object System.Management.Automation.PSCredential("Administrator", $safeModePwd)) -Force -Restart
-    Write-Host "Maskinen er nu medlem af domænet $domainName."
-}
-
-# Opret domæne, hvis maskinen ikke er en domænecontroller allerede
-$existingDC = Get-WmiObject -Class Win32_ComputerSystem | Select-Object -ExpandProperty DomainRole
-if ($existingDC -ne 5) {
-    try {
-        Install-ADDSForest -DomainName $domainName -DomainNetbiosName $netbios -SafeModeAdministratorPassword $safeModePwd -InstallDNS -Force -NoRebootOnCompletion
-    } catch {
-        Write-Host "Fejl ved oprettelse af domæne. Tjek eventuelle eksisterende domæneindstillinger."
-    }
+# Opret domæne hvis ikke allerede domain controller
+if (-not (Get-ADDomainController -ErrorAction SilentlyContinue)) {
+    Install-ADDSForest -DomainName $domainName -DomainNetbiosName $netbios -SafeModeAdministratorPassword $safeModePwd -InstallDNS -Force -NoRebootOnCompletion
 } else {
     Write-Host "Maskinen er allerede en domænecontroller."
 }
 
 # Del netværksmappe
-if (!(Test-Path $sharePath)) {
-    New-Item -Path $sharePath -ItemType Directory -Force | Out-Null
-}
-$existingShare = Get-SmbShare | Where-Object { $_.Name -eq $shareName }
-if ($null -eq $existingShare) {
+if (!(Test-Path $sharePath)) { New-Item -Path $sharePath -ItemType Directory -Force | Out-Null }
+
+if (-not (Get-SmbShare -Name $shareName -ErrorAction SilentlyContinue)) {
     New-SmbShare -Name $shareName -Path $sharePath -FullAccess "Domain Admins"
 } else {
     Write-Host "Netværksmappen $shareName er allerede delt."
 }
 
-Write-Host "✅ Setup fuldført. Genstarter maskinen for at afslutte installationen."
-Restart-Computer -Force
+Write-Host "✅ Setup fuldført. Genstart sker via Ansible."
