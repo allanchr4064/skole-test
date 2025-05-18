@@ -5,10 +5,14 @@ param(
     [string]$dcIPAddress
 )
 
+# Find netværkskortet
 $interface = Get-NetAdapter | Where-Object { $_.Status -eq "Up" } | Select-Object -First 1
 
-# Sæt DNS til DC01
+# Sæt DNS til at pege på din DC01
 Set-DnsClientServerAddress -InterfaceAlias $interface.Name -ServerAddresses $dcIPAddress
+
+# Vent lidt for at sikre DNS bliver opdateret
+Start-Sleep -Seconds 5
 
 # Join domænet
 try {
