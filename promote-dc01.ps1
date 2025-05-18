@@ -1,36 +1,34 @@
 param(
     [string]$domainName,
-    [string]$domainNetbios,
     [string]$domainAdminUser,
-    [SecureString]$domainAdminPassword,
-    [SecureString]$safeModePassword,
-    [string]$dc01IPAddress,
-    [string]$subnetMask,
-    [string]$gateway
+    [securestring]$domainAdminPassword,
+    [string]$dcIPAddress
 )
 
-# Installer AD-Domain-Services og DNS
-Install-WindowsFeature -Name AD-Domain-Services, DNS
+# Sikr at scriptet kan køre
+Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
 
-# Opret domænet og promover serveren til Domain Controller
-$securePassword = ConvertTo-SecureString $domainAdminPassword -AsPlainText -Force
-$secureSafeModePassword = ConvertTo-SecureString $safeModePassword -AsPlainText -Force
+# Find aktivt netværkskort
+$interface = Get-NetAdapter | Where-Object { $_.Status -eq "Up" } | Select-Object -First 1
+if (-not $interface) {
+    Write-Error "Intet aktivt netværkskort fundet"
+    exit 1
+}
 
-$domainAdminCredential = New-Object System.Management.Automation.PSCredential ($domainAdminUser, $securePassword)
+# Sæt DNS til kun din Domain Controller
+Set-DnsClientServerAddress -InterfaceAlias $interface.Name -ServerAddresses @($dcIPAddress)
 
-# Installer Domain Controller og konfigurer DNS
-Install-ADDSDomainController `
-    -DomainName $domainName `
-    -DomainNetbiosName $domainNetbios `
-    -SafeModeAdministratorPassword $secureSafeModePassword `
-    -Credential $domainAdminCredential `
-    -InstallDns `
-    -NoRebootOnCompletion $false `
-    -Force
+# Vent lidt for at sikre DNS virker
+Start-Sleep -Seconds 5
 
-# Konfigurer netværksindstillinger (IP, Subnet, Gateway)
-New-NetIPAddress -InterfaceAlias "Ethernet" -IPAddress $dc01IPAddress -PrefixLength 24 -DefaultGateway $gateway
-Set-DnsClientServerAddress -InterfaceAlias "Ethernet" -ServerAddresses 127.0.0.1
+# Opret credentials
+$cred = New-Object System.Management.Automation.PSCredential ("$domainName\$domainAdminUser", $domainAdminPassword)
 
-# Genstart for at fuldføre promotionen
-Restart-Computer -Force
+# Join domænet
+try {
+    Add-Computer -DomainName $domainName -Credential $cred -Force -Restart
+} catch {
+    $_ | Out-File -FilePath C:\Temp\domain-join-error.txt -Encoding utf8
+    Write-Error "Fejl under domain join: $_"
+    exit 1
+}
