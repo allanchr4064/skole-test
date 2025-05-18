@@ -14,7 +14,7 @@ if (-not $interface) {
 }
 
 # Sæt DNS til at pege på din Domain Controller
-Set-DnsClientServerAddress -InterfaceAlias $interface.Name -ServerAddresses $dcIPAddress
+Set-DnsClientServerAddress -InterfaceAlias $interface.Name -ServerAddresses @($dcIPAddress, "8.8.8.8")
 
 # Vent lidt for at sikre DNS træder i kraft
 Start-Sleep -Seconds 5
