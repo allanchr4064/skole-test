@@ -38,14 +38,21 @@ if ($zoneName) {
     }
 }
 
-# Promote til DC (kør promotionen)
+# Først join serveren til domænet
 if (-not (Get-ADDomainController -ErrorAction SilentlyContinue)) {
-    Write-Host "Promoverer til Domain Controller..."
-    Install-ADDSForest -DomainName $domainName -DomainNetbiosName $netbios -SafeModeAdministratorPassword $safeModePwd -InstallDNS -Force -NoRebootOnCompletion -Verbose
+    Write-Host "Joins serveren til domænet..."
+    Add-Computer -DomainName $domainName -OUPath "OU=Servers,DC=skoletræt,DC=ninja" -Credential (New-Object System.Management.Automation.PSCredential("administrator", $safeModePwd)) -Restart
 
-    # Hvis du ønsker at sikre, at serveren genstarter automatisk efter promotionen, kan du tilføje en kommando her:
-    Write-Host "Domain controller promotion er afsluttet. Genstarter serveren..."
+    # Også sikre, at DNS bliver opdateret
+    Set-DnsClientServerAddress -InterfaceAlias $interface.Name -ServerAddresses @("192.168.1.112", "192.168.1.113")
+   
+    Write-Host "Genstarter serveren for at fuldføre domæneindmeldelse..."
     Restart-Computer -Force
-} else {
-    Write-Host "Denne server er allerede en Domain Controller."
 }
+
+# Promote til DC (kør promotionen)
+Write-Host "Promoverer til Domain Controller..."
+Install-ADDSForest -DomainName $domainName -DomainNetbiosName $netbios -SafeModeAdministratorPassword $safeModePwd -InstallDNS -Force -NoRebootOnCompletion -Verbose
+
+Write-Host "Domain controller promotion er afsluttet. Genstarter serveren..."
+Restart-Computer -Force
