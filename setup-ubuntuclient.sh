@@ -1,8 +1,8 @@
 #!/bin/bash
 
-DOMAIN="skole.ninja"
+DOMAIN="skoletræt.ninja"
 DNS_IP="192.168.1.116"
-HOSTNAME="ubu1"
+HOSTNAME="ubu"
 
 # Installer pakker
 sudo apt update
