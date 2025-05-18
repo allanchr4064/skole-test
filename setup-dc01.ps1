@@ -38,7 +38,14 @@ if ($zoneName) {
     }
 }
 
-# Promote til DC
+# Promote til DC (kør promotionen)
 if (-not (Get-ADDomainController -ErrorAction SilentlyContinue)) {
-    Install-ADDSForest -DomainName $domainName -DomainNetbiosName $netbios -SafeModeAdministratorPassword $safeModePwd -InstallDNS -Force -NoRebootOnCompletion
+    Write-Host "Promoverer til Domain Controller..."
+    Install-ADDSForest -DomainName $domainName -DomainNetbiosName $netbios -SafeModeAdministratorPassword $safeModePwd -InstallDNS -Force -NoRebootOnCompletion -Verbose
+
+    # Hvis du ønsker at sikre, at serveren genstarter automatisk efter promotionen, kan du tilføje en kommando her:
+    Write-Host "Domain controller promotion er afsluttet. Genstarter serveren..."
+    Restart-Computer -Force
+} else {
+    Write-Host "Denne server er allerede en Domain Controller."
 }
