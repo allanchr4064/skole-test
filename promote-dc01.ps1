@@ -1,42 +1,36 @@
 param(
     [string]$domainName,
+    [string]$domainNetbios,
     [string]$domainAdminUser,
-    [securestring]$domainAdminPassword,
-    [securestring]$safeModePassword,
+    [SecureString]$domainAdminPassword,
+    [SecureString]$safeModePassword,
     [string]$dc01IPAddress,
     [string]$subnetMask,
     [string]$gateway
 )
 
-# Tjek om serveren allerede er en Domain Controller
-$domainController = Get-ADDomainController -ErrorAction SilentlyContinue
-if ($domainController) {
-    Write-Host "Serveren er allerede en Domain Controller."
-    exit
-}
+# Installer AD-Domain-Services og DNS
+Install-WindowsFeature -Name AD-Domain-Services, DNS
 
-# Sæt statisk IP-adresse
-$interface = Get-NetAdapter | Where-Object { $_.Status -eq "Up" } | Select-Object -First 1
+# Opret domænet og promover serveren til Domain Controller
+$securePassword = ConvertTo-SecureString $domainAdminPassword -AsPlainText -Force
+$secureSafeModePassword = ConvertTo-SecureString $safeModePassword -AsPlainText -Force
 
-# Fjern tidligere IP-konfigurationer og sæt den nye IP
-Remove-NetIPAddress -InterfaceAlias $interface.Name -Confirm:$false -ErrorAction SilentlyContinue
-$prefixLength = ($subnetMask -split '\.').Where({$_ -eq "255"}).Count * 8
-New-NetIPAddress -InterfaceAlias $interface.Name -IPAddress $dc01IPAddress -PrefixLength $prefixLength -DefaultGateway $gateway
-Set-DnsClientServerAddress -InterfaceAlias $interface.Name -ServerAddresses $dc01IPAddress
+$domainAdminCredential = New-Object System.Management.Automation.PSCredential ($domainAdminUser, $securePassword)
 
-# Installer nødvendige Windows-features
-Install-WindowsFeature AD-Domain-Services -IncludeManagementTools
-Install-WindowsFeature DNS -IncludeManagementTools
+# Installer Domain Controller og konfigurer DNS
+Install-ADDSDomainController `
+    -DomainName $domainName `
+    -DomainNetbiosName $domainNetbios `
+    -SafeModeAdministratorPassword $secureSafeModePassword `
+    -Credential $domainAdminCredential `
+    -InstallDns `
+    -NoRebootOnCompletion $false `
+    -Force
 
-# Opret en Domain Controller og DNS-server
-Write-Host "Promoverer serveren til Domain Controller..."
-Install-ADDSForest -DomainName $domainName `
-    -DomainNetbiosName "SKOLE" `
-    -SafeModeAdministratorPassword $safeModePassword `
-    -InstallDNS `
-    -Force `
-    -NoRebootOnCompletion
+# Konfigurer netværksindstillinger (IP, Subnet, Gateway)
+New-NetIPAddress -InterfaceAlias "Ethernet" -IPAddress $dc01IPAddress -PrefixLength 24 -DefaultGateway $gateway
+Set-DnsClientServerAddress -InterfaceAlias "Ethernet" -ServerAddresses 127.0.0.1
 
-# Konfigurationen er afsluttet, genstart serveren for at fuldføre promotionen
-Write-Host "Domain Controller promotion er afsluttet. Genstarter serveren for at afslutte processen..."
+# Genstart for at fuldføre promotionen
 Restart-Computer -Force
