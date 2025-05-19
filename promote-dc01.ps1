@@ -54,6 +54,21 @@ try {
 
 Start-Sleep -Seconds 5
 
+# Tjek om AD DS-rollen er installeret
+$adDsRole = Get-WindowsFeature AD-Domain-Services
+if (-not $adDsRole.Installed) {
+    Write-Host "❗ AD DS-rollen er ikke installeret. Installerer nu..."
+    try {
+        Install-WindowsFeature AD-Domain-Services
+        Write-Host "✅ AD DS-rollen er nu installeret."
+    } catch {
+        Write-Error "❌ Fejl ved installation af AD DS-rollen: $($_)"
+        exit 1
+    }
+} else {
+    Write-Host "✅ AD DS-rollen er allerede installeret."
+}
+
 # Promote til Domain Controller
 try {
     Install-ADDSForest `
