@@ -1,5 +1,5 @@
 param(
-    [string]$domainName = "skoletræt.ninja",
+    [string]$domainName = "skoletraet.ninja",
     [string]$domainAdminUser = "main",
     [securestring]$domainAdminPassword,
     [string]$dcIPAddress = "192.168.1.111"
@@ -28,9 +28,9 @@ Invoke-Command -ComputerName $dcIPAddress -Credential $cred -ScriptBlock {
     param($hostname, $ip, $zone)
     try {
         Add-DnsServerResourceRecordA -Name $hostname -ZoneName $zone -IPv4Address $ip -TimeToLive 01:00:00 -ErrorAction Stop
-        Write-Output "✅ A-record tilføjet: $hostname -> $ip"
+        "✅ A-record tilføjet: $hostname -> $ip"
     } catch {
-        Write-Error "Fejl ved tilføjelse af A-record: $_"
+        "⚠️ Fejl ved A-record: $_"
     }
 } -ArgumentList $hostname, $ip, $domainName
 
@@ -40,6 +40,6 @@ try {
     Write-Output "✅ Domænejoin gennemført – genstart er påkrævet!"
 } catch {
     $_ | Out-File -FilePath C:\Temp\domain-join-error.txt -Encoding utf8
-    Write-Error "Fejl ved domain join: $_"
+    Write-Error "❌ Fejl under domain join: $_"
     exit 1
 }
