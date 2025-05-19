@@ -28,9 +28,9 @@ Invoke-Command -ComputerName $dcIPAddress -Credential $cred -ScriptBlock {
     param($hostname, $ip, $zone)
     try {
         Add-DnsServerResourceRecordA -Name $hostname -ZoneName $zone -IPv4Address $ip -TimeToLive 01:00:00 -ErrorAction Stop
-        "✅ A-record tilføjet: $hostname -> $ip"
+        Write-Output "✅ A-record tilføjet: $hostname -> $ip"
     } catch {
-        "⚠️ Fejl ved A-record: $_"
+        Write-Output "⚠️ Fejl ved A-record: $_"
     }
 } -ArgumentList $hostname, $ip, $domainName
 
