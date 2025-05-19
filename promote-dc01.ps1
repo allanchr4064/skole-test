@@ -1,5 +1,5 @@
 param(
-    [string]$domainName = "skoletraet.ninja",
+    [string]$domainName = "skoletræt.ninja",
     [string]$domainAdminUser = "main",
     [securestring]$domainAdminPassword,
     [string]$dcIPAddress = "192.168.1.111"
