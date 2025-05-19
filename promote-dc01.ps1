@@ -18,13 +18,37 @@ if (-not $interface) {
     exit 1
 }
 
-# Sæt IP, gateway og DNS
+# Beregn prefix length fra subnetmask
+function Get-PrefixLength($subnetMask) {
+    $binary = ($subnetMask -split '\.') | ForEach-Object {
+        [Convert]::ToString([int]$_, 2).PadLeft(8, '0')
+    }
+    return ($binary -join '').ToCharArray() | Where-Object { $_ -eq '1' } | Measure-Object | Select-Object -ExpandProperty Count
+}
+
+$prefixLength = Get-PrefixLength $subnetMask
+
+# Tjek om IP-adressen allerede er sat
+$ipExists = Get-NetIPAddress -IPAddress $dc01IPAddress -ErrorAction SilentlyContinue
+
+if (-not $ipExists) {
+    try {
+        New-NetIPAddress -InterfaceAlias $interface.Name -IPAddress $dc01IPAddress -PrefixLength $prefixLength -DefaultGateway $gateway -ErrorAction Stop
+        Write-Host "✅ IP-adresse $dc01IPAddress sat på $($interface.Name)"
+    } catch {
+        Write-Error "❌ Fejl ved opsætning af IP: $($_)"
+        exit 1
+    }
+} else {
+    Write-Host "ℹ️ IP-adresse $dc01IPAddress findes allerede – springer IP-opsætning over."
+}
+
+# Sæt DNS og suffix (kan overskrive eksisterende DNS uden fejl)
 try {
-    New-NetIPAddress -InterfaceAlias $interface.Name -IPAddress $dc01IPAddress -PrefixLength 24 -DefaultGateway $gateway -ErrorAction Stop
     Set-DnsClientServerAddress -InterfaceAlias $interface.Name -ServerAddresses $dc01IPAddress -ErrorAction Stop
     Set-DnsClient -InterfaceAlias $interface.Name -ConnectionSpecificSuffix $domainName -ErrorAction Stop
 } catch {
-    Write-Error "❌ Netværksopsætning fejlede: $($_)"
+    Write-Error "❌ Fejl ved DNS-opsætning: $($_)"
     exit 1
 }
 
