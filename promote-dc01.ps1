@@ -6,35 +6,38 @@ param(
 )
 
 Set-ExecutionPolicy Bypass -Scope Process -Force
+
+# Opretter PSCredential objekt til domæneadministrator
 $cred = New-Object System.Management.Automation.PSCredential ("$domainName\$domainAdminUser", $domainAdminPassword)
 
 # Find aktivt netkort
 $interface = Get-NetAdapter | Where-Object { $_.Status -eq "Up" } | Select-Object -First 1
 if (-not $interface) {
-    Write-Error "Intet aktivt netværkskort fundet"
+    Write-Error "❌ Intet aktivt netværkskort fundet"
     exit 1
 }
 
-# Sæt DNS
+# Sæt DNS-serveradresse til Domain Controller IP
 Set-DnsClientServerAddress -InterfaceAlias $interface.Name -ServerAddresses @($dcIPAddress)
 Start-Sleep -Seconds 5
 
-# Få info til DNS
+# Få systemets hostname og IP-adresse
 $hostname = $env:COMPUTERNAME
 $ip = (Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias $interface.Name | Where-Object { $_.PrefixOrigin -ne "WellKnown" }).IPAddress
 
-# Tilføj A-record via remoting til DC
+# Tilføj A-record via remoting til Domain Controller
 Invoke-Command -ComputerName $dcIPAddress -Credential $cred -ScriptBlock {
     param($hostname, $ip, $zone)
     try {
+        # Tilføj A-record i DNS
         Add-DnsServerResourceRecordA -Name $hostname -ZoneName $zone -IPv4Address $ip -TimeToLive 01:00:00 -ErrorAction Stop
-        Write-Output "✅ A-record tilføjet: $hostname -> $ip"
+        Write-Host "✅ A-record tilføjet: $hostname -> $ip"
     } catch {
-        Write-Output "⚠️ Fejl ved A-record: $_"
+        Write-Error "⚠️ Fejl ved tilføjelse af A-record: $_"
     }
 } -ArgumentList $hostname, $ip, $domainName
 
-# Join domæne uden reboot
+# Join domænet uden reboot
 try {
     Add-Computer -DomainName $domainName -Credential $cred -Force
     Write-Output "✅ Domænejoin gennemført – genstart er påkrævet!"
