@@ -69,7 +69,7 @@ if (-not $adDsRole.Installed) {
     Write-Host "✅ AD DS-rollen er allerede installeret."
 }
 
-# Promote til Domain Controller
+# Promote til Domain Controller (uden genstart)
 try {
     Install-ADDSForest `
         -DomainName $domainName `
@@ -80,10 +80,10 @@ try {
         -DatabasePath "C:\Windows\NTDS" `
         -LogPath "C:\Windows\NTDS" `
         -SYSVOLPath "C:\Windows\SYSVOL" `
-        -NoRebootOnCompletion:$false `
+        -NoRebootOnCompletion:$true `
         -Force:$true
 
-    Write-Output "✅ DC01 er nu Domain Controller for $domainName"
+    Write-Host "✅ DC01 er nu Domain Controller for $domainName"
 } catch {
     $_ | Out-File -FilePath C:\Temp\promote-error.txt -Encoding utf8
     Write-Error "❌ Fejl under domain promotion: $($_)"
