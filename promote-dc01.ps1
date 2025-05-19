@@ -1,54 +1,52 @@
 param(
     [string]$domainName = "skoletræt.ninja",
+    [string]$domainNetbios = "SKOLE",
     [string]$domainAdminUser = "main",
     [securestring]$domainAdminPassword,
-    [string]$dcIPAddress = "192.168.1.111"
+    [securestring]$safeModePassword,
+    [string]$dc01IPAddress = "192.168.1.111",
+    [string]$subnetMask = "255.255.255.0",
+    [string]$gateway = "192.168.1.1"
 )
 
 Set-ExecutionPolicy Bypass -Scope Process -Force
 
-# Skift DNS-suffikset til skoletraet.ninja
-$interfaceAlias = "Ethernet"  # Skift dette til den korrekte interface alias hvis nødvendigt
-Set-DnsClient -InterfaceAlias $interfaceAlias -ConnectionSpecificSuffix $domainName
-
-# Skift DNS-serveren til Domain Controller IP
-Set-DnsClientServerAddress -InterfaceAlias $interfaceAlias -ServerAddresses @($dcIPAddress)
-
-# Opret credentials til domænejoin
-$cred = New-Object System.Management.Automation.PSCredential ("$domainName\$domainAdminUser", $domainAdminPassword)
-
 # Find aktivt netværkskort
 $interface = Get-NetAdapter | Where-Object { $_.Status -eq "Up" } | Select-Object -First 1
 if (-not $interface) {
-    Write-Error "Intet aktivt netværkskort fundet"
+    Write-Error "❌ Intet aktivt netværkskort fundet"
     exit 1
 }
 
-# Sæt DNS
-Set-DnsClientServerAddress -InterfaceAlias $interface.Name -ServerAddresses @($dcIPAddress)
+# Sæt IP, gateway og DNS
+try {
+    New-NetIPAddress -InterfaceAlias $interface.Name -IPAddress $dc01IPAddress -PrefixLength 24 -DefaultGateway $gateway -ErrorAction Stop
+    Set-DnsClientServerAddress -InterfaceAlias $interface.Name -ServerAddresses $dc01IPAddress -ErrorAction Stop
+    Set-DnsClient -InterfaceAlias $interface.Name -ConnectionSpecificSuffix $domainName -ErrorAction Stop
+} catch {
+    Write-Error "❌ Netværksopsætning fejlede: $($_)"
+    exit 1
+}
+
 Start-Sleep -Seconds 5
 
-# Få info til DNS
-$hostname = $env:COMPUTERNAME
-$ip = (Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias $interface.Name | Where-Object { $_.PrefixOrigin -ne "WellKnown" }).IPAddress
-
-# Tilføj A-record via remoting til DC
-Invoke-Command -ComputerName $dcIPAddress -Credential $cred -ScriptBlock {
-    param($hostname, $ip, $zone)
-    try {
-        Add-DnsServerResourceRecordA -Name $hostname -ZoneName $zone -IPv4Address $ip -TimeToLive 01:00:00 -ErrorAction Stop
-        "✅ A-record tilføjet: $hostname -> $ip"
-    } catch {
-        "⚠️ Fejl ved A-record: $_"
-    }
-} -ArgumentList $hostname, $ip, $domainName
-
-# Join domæne uden reboot
+# Promote til Domain Controller
 try {
-    Add-Computer -DomainName $domainName -Credential $cred -Force
-    Write-Output "✅ Domænejoin gennemført – genstart er påkrævet!"
+    Install-ADDSForest `
+        -DomainName $domainName `
+        -DomainNetbiosName $domainNetbios `
+        -SafeModeAdministratorPassword $safeModePassword `
+        -InstallDNS `
+        -CreateDnsDelegation:$false `
+        -DatabasePath "C:\Windows\NTDS" `
+        -LogPath "C:\Windows\NTDS" `
+        -SYSVOLPath "C:\Windows\SYSVOL" `
+        -NoRebootOnCompletion:$false `
+        -Force:$true
+
+    Write-Output "✅ DC01 er nu Domain Controller for $domainName"
 } catch {
-    $_ | Out-File -FilePath C:\Temp\domain-join-error.txt -Encoding utf8
-    Write-Error "❌ Fejl under domain join: $_"
+    $_ | Out-File -FilePath C:\Temp\promote-error.txt -Encoding utf8
+    Write-Error "❌ Fejl under domain promotion: $($_)"
     exit 1
 }
